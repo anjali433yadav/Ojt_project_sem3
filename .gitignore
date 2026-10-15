@@ -1,0 +1,42 @@
+# Environment variables
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+
+# Python virtual environment & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+backend/.venv/
+
+# ChromaDB binary data and local database
+backend/app/rag/chroma_db/chroma.sqlite3
+backend/app/rag/chroma_db/*/
+*.sqlite3
+
+# Node & Next.js
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+build/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# Operating System & IDEs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.log
