@@ -1,0 +1,56 @@
+
+CYBERSECURITY AWARENESS KNOWLEDGE BASE
+
+1. PHISHING EMAILS
+
+Phishing is a cyber attack where attackers use fake emails or messages
+to trick people into sharing confidential information or performing
+unsafe actions.
+
+Warning signs include:
+- Unknown or suspicious sender addresses.
+- Unexpected attachments.
+- Urgent messages demanding immediate action.
+- Requests for passwords or confidential information.
+- Links that do not match the claimed website.
+
+Employees should verify suspicious messages through official channels
+and report them to their security team.
+
+2. PASSWORD SECURITY
+
+Employees should:
+- Use strong and unique passwords.
+- Never share passwords with anyone.
+- Enable multi-factor authentication.
+- Avoid reusing passwords across different services.
+- Never enter passwords through suspicious links.
+
+3. SAFE BROWSING
+
+Employees should:
+- Verify website addresses before entering information.
+- Avoid downloading files from untrusted websites.
+- Keep browsers and operating systems updated.
+- Avoid clicking unexpected links.
+- Use approved company resources.
+
+4. REPORTING SUSPICIOUS ACTIVITY
+
+Employees should:
+- Report suspicious emails to the security team.
+- Avoid opening unexpected attachments.
+- Never enter real credentials into simulation pages.
+- Follow the organization's incident reporting process.
+
+5. PHISHING AWARENESS SIMULATION
+
+A phishing simulation is a controlled cybersecurity training
+exercise designed to teach employees how to identify suspicious
+messages.
+
+All simulation messages must be clearly controlled training
+content. They must not collect real passwords or confidential data.
+
+Use safe placeholder links such as:
+[SIMULATED TRAINING LINK - DO NOT OPEN]
