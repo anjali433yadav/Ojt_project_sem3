@@ -107,8 +107,8 @@ export default function DashboardPage() {
   }
 
   const roleMenus: Record<string, string[]> = {
-    Admin: ["Dashboard", "User Management", "Campaigns", "Simulations", "Training", "Audit Logs"],
-    "Campaign Manager": ["Dashboard", "Campaigns", "Simulations", "Training"],
+    Admin: ["Dashboard", "User Management", "Campaigns", "Simulations", "Simulation Reviews", "Training", "Audit Logs"],
+    "Campaign Manager": ["Dashboard", "Campaigns", "Simulations", "Simulation Reviews", "Training"],
     "Security Analyst": ["Dashboard", "Campaigns", "Simulation Reviews", "Audit Reports"],
     Auditor: ["Dashboard", "Campaign Reports", "Training Reports", "Audit Logs"],
     Employee: ["Dashboard", "My Training", "My Simulations"],

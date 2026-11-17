@@ -111,6 +111,26 @@ export default function MySimulationsPage() {
     }
   }
 
+  async function completeSimulation(simulationId: string) {
+    try {
+      const token = localStorage.getItem("access_token");
+      setError("");
+
+      await apiRequest(
+        `/api/simulations/${simulationId}/complete`,
+        { method: "POST" },
+        token!
+      );
+
+      setMessage("Simulation exercise marked as completed! Well done.");
+      await loadSimulations();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not complete simulation."
+      );
+    }
+  }
+
   if (loading) {
     return <main className="p-8">Loading your simulations...</main>;
   }
@@ -228,17 +248,27 @@ export default function MySimulationsPage() {
                         className="w-full rounded-lg border p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                       />
 
-                      <button
-                        onClick={() =>
-                          reportSimulation(simulation.simulation_id)
-                        }
-                        disabled={reportingId === simulation.simulation_id}
-                        className="mt-3 rounded-lg bg-orange-600 px-5 py-2 text-white hover:bg-orange-700 disabled:opacity-50"
-                      >
-                        {reportingId === simulation.simulation_id
-                          ? "Submitting..."
-                          : "Submit Report"}
-                      </button>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() =>
+                            reportSimulation(simulation.simulation_id)
+                          }
+                          disabled={reportingId === simulation.simulation_id}
+                          className="rounded-lg bg-orange-600 px-5 py-2 text-white hover:bg-orange-700 disabled:opacity-50 text-sm"
+                        >
+                          {reportingId === simulation.simulation_id
+                            ? "Submitting..."
+                            : "Submit Suspicious Report"}
+                        </button>
+                        <button
+                          onClick={() =>
+                            completeSimulation(simulation.simulation_id)
+                          }
+                          className="rounded-lg bg-green-600 px-5 py-2 text-white hover:bg-green-700 text-sm font-medium"
+                        >
+                          ✓ Mark Exercise as Completed
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

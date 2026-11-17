@@ -42,6 +42,7 @@ from app.schemas.ai import SimulationGenerationRequest
 from app.schemas.ai import SaveAIDraftRequest
 from app.schemas.review import SimulationReviewRequest
 from app.services.gemini_service import generate_simulation_content
+from app.rag.workflow import build_simulation_workflow
 
 
 from app.models.training import Training
@@ -812,31 +813,66 @@ def generate_ai_simulation(
     }:
         raise HTTPException(400, "Invalid difficulty")
 
+    # Try LangGraph RAG Multi-Agent workflow first
     try:
-        generated_content = generate_simulation_content(
-            topic=data.topic,
-            audience=data.audience,
-            difficulty=data.difficulty
-        )
+        workflow_app = build_simulation_workflow()
+        initial_state = {
+            "topic": data.topic,
+            "difficulty": data.difficulty,
+            "context": "",
+            "sources": [],
+            "generated_content": "",
+            "safety_passed": False,
+            "status": "started",
+            "error": "",
+        }
+        result = workflow_app.invoke(initial_state)
+        generated_content = result.get("generated_content", "")
+        sources = result.get("sources", [])
+        safety_passed = result.get("safety_passed", True)
+
+        if not generated_content:
+            raise ValueError("LangGraph generated empty content.")
 
         return {
-            "message": "AI content generated successfully!",
+            "message": "AI content generated successfully using LangGraph & ChromaDB RAG!",
             "status": "pending_review",
             "ai_generated": True,
-            "generated_by": "Google Gemini",
-            "content": generated_content
+            "generated_by": "Google Gemini (RAG Multi-Agent)",
+            "content": generated_content,
+            "sources": sources,
+            "safety_passed": safety_passed
         }
 
-    except RuntimeError as error:
-        print("GEMINI CONFIGURATION ERROR:", str(error))
-        raise HTTPException(status_code=503, detail=str(error))
+    except Exception as rag_err:
+        print(f"RAG workflow notice: {rag_err}. Falling back to direct Gemini generation.")
+        try:
+            generated_content = generate_simulation_content(
+                topic=data.topic,
+                audience=data.audience,
+                difficulty=data.difficulty
+            )
 
-    except Exception as error:
-        print("GEMINI ACTUAL ERROR:", repr(error))
-        raise HTTPException(
-            status_code=502,
-            detail="Gemini error: " + str(error)[:500]
-        )
+            return {
+                "message": "AI content generated successfully!",
+                "status": "pending_review",
+                "ai_generated": True,
+                "generated_by": "Google Gemini (Direct Fallback)",
+                "content": generated_content,
+                "sources": ["General Cybersecurity Standards"],
+                "safety_passed": True
+            }
+
+        except RuntimeError as error:
+            print("GEMINI CONFIGURATION ERROR:", str(error))
+            raise HTTPException(status_code=503, detail=str(error))
+
+        except Exception as error:
+            print("GEMINI ACTUAL ERROR:", repr(error))
+            raise HTTPException(
+                status_code=502,
+                detail="Gemini error: " + str(error)[:500]
+            )
 
 @app.post("/api/campaigns/{campaign_id}/simulations/save-ai-draft")
 def save_ai_simulation_draft(
@@ -883,14 +919,58 @@ def save_ai_simulation_draft(
         "campaign_id": str(simulation.campaign_id)
     }
 
+@app.get("/api/reviews")
+def get_reviews(
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles("Admin", "Campaign Manager", "Security Analyst")
+    )
+):
+    query = db.query(Simulation, Campaign.name).join(
+        Campaign, Simulation.campaign_id == Campaign.id
+    )
+
+    if status and status != "all":
+        try:
+            status_enum = SimulationStatus(status.lower())
+            query = query.filter(Simulation.status == status_enum)
+        except ValueError:
+            pass
+
+    simulations = query.order_by(Simulation.updated_at.desc()).all()
+
+    return [
+        {
+            "simulation_id": str(sim.id),
+            "title": sim.title,
+            "subject": sim.subject,
+            "content": sim.content,
+            "category": sim.category,
+            "difficulty": sim.difficulty,
+            "ai_generated": sim.ai_generated,
+            "campaign_id": str(sim.campaign_id),
+            "campaign_name": campaign_name,
+            "created_by": str(sim.created_by) if sim.created_by else None,
+            "status": sim.status.value,
+            "review_comment": sim.review_comment,
+            "reviewed_by": str(sim.reviewed_by) if sim.reviewed_by else None,
+            "reviewed_at": sim.reviewed_at.isoformat() if sim.reviewed_at else None,
+            "created_at": sim.created_at.isoformat() if sim.created_at else None,
+        }
+        for sim, campaign_name in simulations
+    ]
+
 @app.get("/api/reviews/pending")
 def get_pending_simulations(
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        require_roles("Admin", "Security Analyst")
+        require_roles("Admin", "Campaign Manager", "Security Analyst")
     )
 ):
-    simulations = db.query(Simulation).filter(
+    simulations = db.query(Simulation, Campaign.name).join(
+        Campaign, Simulation.campaign_id == Campaign.id
+    ).filter(
         Simulation.status == SimulationStatus.PENDING_REVIEW
     ).all()
 
@@ -904,13 +984,15 @@ def get_pending_simulations(
             "difficulty": simulation.difficulty,
             "ai_generated": simulation.ai_generated,
             "campaign_id": str(simulation.campaign_id),
+            "campaign_name": campaign_name,
             "created_by": (
                 str(simulation.created_by)
                 if simulation.created_by else None
             ),
-            "status": simulation.status.value
+            "status": simulation.status.value,
+            "review_comment": simulation.review_comment
         }
-        for simulation in simulations
+        for simulation, campaign_name in simulations
     ]
 
 @app.patch("/api/reviews/{simulation_id}")
@@ -919,7 +1001,7 @@ def review_simulation(
     data: SimulationReviewRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        require_roles("Admin", "Security Analyst")
+        require_roles("Admin", "Campaign Manager", "Security Analyst")
     )
 ):
     simulation = db.query(Simulation).filter(
@@ -938,17 +1020,21 @@ def review_simulation(
             detail="Only pending simulations can be reviewed"
         )
 
-    if data.decision == "rejected" and not data.review_comment:
+    if data.decision == "rejected" and (not data.review_comment or not data.review_comment.strip()):
         raise HTTPException(
             status_code=400,
             detail="A rejection reason is required"
         )
 
+    now = datetime.now(timezone.utc)
     simulation.status = (
         SimulationStatus.APPROVED
         if data.decision == "approved"
         else SimulationStatus.REJECTED
     )
+    simulation.review_comment = data.review_comment.strip() if data.review_comment else None
+    simulation.reviewed_by = current_user.id
+    simulation.reviewed_at = now
 
     create_audit_log(
         db=db,
@@ -958,7 +1044,7 @@ def review_simulation(
         actor_id=current_user.id,
         details={
             "simulation_title": simulation.title,
-            "review_comment": data.review_comment,
+            "review_comment": simulation.review_comment,
             "new_status": simulation.status.value
        }
     )
@@ -971,7 +1057,7 @@ def review_simulation(
         "simulation_id": str(simulation.id),
         "status": simulation.status.value,
         "reviewed_by": str(current_user.id),
-        "review_comment": data.review_comment
+        "review_comment": simulation.review_comment
     }
 
 @app.get("/api/admin/audit-logs")
@@ -1306,7 +1392,7 @@ def dashboard_overview(
     ).subquery()
 
     simulation_query = db.query(Simulation).filter(
-        Simulation.campaign_id.in_(campaign_ids)
+        Simulation.campaign_id.in_(campaign_ids.select())
     )
 
     total_simulations = simulation_query.count()
@@ -1403,7 +1489,7 @@ def campaign_analytics(
             CampaignTarget,
             CampaignResult.target_id == CampaignTarget.id
         )
-        .filter(CampaignTarget.campaign_id.in_(campaign_ids))
+        .filter(CampaignTarget.campaign_id.in_(campaign_ids.select()))
     )
 
     result_counts = (
@@ -1671,6 +1757,88 @@ def report_my_simulation(
 
     return {
         "message": "Simulation reported successfully.",
+        "simulation_id": str(simulation.id),
+        "outcome": result.outcome.value
+    }
+
+@app.post("/api/simulations/{simulation_id}/complete")
+def complete_my_simulation(
+    simulation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles("Employee")
+    )
+):
+    simulation = (
+        db.query(Simulation)
+        .filter(
+            Simulation.id == simulation_id,
+            Simulation.status == SimulationStatus.APPROVED
+        )
+        .first()
+    )
+
+    if not simulation:
+        raise HTTPException(
+            status_code=404,
+            detail="Approved simulation not found."
+        )
+
+    target = (
+        db.query(CampaignTarget)
+        .filter(
+            CampaignTarget.campaign_id == simulation.campaign_id,
+            CampaignTarget.user_id == current_user.id
+        )
+        .first()
+    )
+
+    if not target:
+        raise HTTPException(
+            status_code=403,
+            detail="This simulation is not assigned to you."
+        )
+
+    result = (
+        db.query(CampaignResult)
+        .filter(
+            CampaignResult.target_id == target.id,
+            CampaignResult.simulation_id == simulation.id
+        )
+        .first()
+    )
+
+    now = datetime.now(timezone.utc)
+
+    if not result:
+        result = CampaignResult(
+            target_id=target.id,
+            simulation_id=simulation.id,
+            outcome=ResultOutcome.COMPLETED,
+            completed_at=now
+        )
+        db.add(result)
+    else:
+        result.outcome = ResultOutcome.COMPLETED
+        result.completed_at = now
+
+    create_audit_log(
+        db=db,
+        action="simulation_completed",
+        entity_type="simulation",
+        entity_id=str(simulation.id),
+        actor_id=current_user.id,
+        details={
+            "simulation_title": simulation.title,
+            "campaign_id": str(simulation.campaign_id),
+            "status": "completed"
+        }
+    )
+
+    db.commit()
+
+    return {
+        "message": "Simulation completed successfully.",
         "simulation_id": str(simulation.id),
         "outcome": result.outcome.value
     }

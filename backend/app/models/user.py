@@ -50,7 +50,8 @@ class User(Base, UUIDMixin, TimestampMixin):
     )
 
     created_simulations: Mapped[list["Simulation"]] = relationship(
-        back_populates="creator"
+        back_populates="creator",
+        foreign_keys="[Simulation.created_by]"
     )
 
     created_trainings: Mapped[list["Training"]] = relationship(

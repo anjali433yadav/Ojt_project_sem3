@@ -1,7 +1,8 @@
 import uuid
 import enum
 
-from sqlalchemy import String, Text, ForeignKey, Enum, Boolean
+from datetime import datetime
+from sqlalchemy import String, Text, ForeignKey, Enum, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, UUIDMixin, TimestampMixin
@@ -72,12 +73,32 @@ class Simulation(Base, UUIDMixin, TimestampMixin):
         index=True
     )
 
+    review_comment: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True
+    )
+
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
     campaign: Mapped["Campaign"] = relationship(
         back_populates="simulations"
     )
 
     creator: Mapped["User | None"] = relationship(
-        back_populates="created_simulations"
+        back_populates="created_simulations",
+        foreign_keys=[created_by]
+    )
+
+    reviewer: Mapped["User | None"] = relationship(
+        foreign_keys=[reviewed_by]
     )
 
     results: Mapped[list["CampaignResult"]] = relationship(
